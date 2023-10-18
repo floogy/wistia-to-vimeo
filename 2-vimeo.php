@@ -1,11 +1,11 @@
 <?php
+// Do not buffer output - ignore these lines
 ob_start();
 ob_implicit_flush(true);
 ob_end_flush();
-
 echo "<pre>\n\n";
 
-// Setup with Vimeo
+// Setup re. Vimeo > Settings > API access
 $setup = [
 	'client_id' => 'VIMEO_CLIENT_ID',
 	'client_secret' => 'VIMEO_CLIENT_SECRET', 
