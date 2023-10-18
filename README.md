@@ -1,4 +1,4 @@
-# wistia-to-vimeo
+ # wistia-to-vimeo
 Wistia makes it hard to leave. Vimeo makes it hard to arrive. Migrate with ease.
 
 `php 1-wistia.php`
@@ -11,3 +11,4 @@ Wistia makes it hard to leave. Vimeo makes it hard to arrive. Migrate with ease.
 - Tags videos on Vimeo
 - Recreates folders on Vimeo
 - Moves videos into appropriate Vimeo folders
+- Outputs a CSV spreadsheet which associates old Wistia ID with new Vimeo ID
