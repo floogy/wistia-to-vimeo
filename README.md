@@ -1,6 +1,8 @@
  # wistia-to-vimeo
 Wistia makes it hard to leave. Vimeo makes it hard to arrive. Migrate with ease.
 
+_Tip: Execute via command line to avoid hitting PHP's `max_execution time`._
+
 `php 1-wistia.php`
 - Consumes Wistia data via API into a single JSON file; sleeps between requests to avoid API rate limiting
 - Renames files from Wistia's XXXXXXXXXXXX.bin using {Video Title}.{appropriate extension for contentType from Wistia API].
