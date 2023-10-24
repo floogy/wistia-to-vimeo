@@ -6,7 +6,7 @@ $config = [
 		'file_count' => 8300,
 	],
 	'vimeo' => [
-		'php_sdk_path' => dirname(__FILE__).'/vimeo.php/autoload.php',
+		'php_sdk_path' => dirname(__FILE__).'/vimeo.php/autoload.php', // path to https://github.com/vimeo/vimeo.php
 		'client_id' => 'VIMEO_CLIENT_ID_HERE',
 		'client_secret' => 'VIMEO_CLIENT_SECRET_HERE', 
 		'access_token' => 'VIMEO_ACCESS_TOKEN_HERE',
