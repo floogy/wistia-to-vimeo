@@ -12,3 +12,7 @@ Wistia makes it hard to leave. Vimeo makes it hard to arrive. Migrate with ease.
 - Recreates folders on Vimeo
 - Moves videos into appropriate Vimeo folders
 - Outputs a CSV spreadsheet which associates old Wistia ID with new Vimeo ID
+
+## Dependencies
+- Download the official PHP library for the Vimeo API: https://github.com/vimeo/vimeo.php
+- Extract to create a `vimeo.php` subfolder alongside the files here (or update the path in `config.php`)
