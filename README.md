@@ -1,7 +1,7 @@
  # wistia-to-vimeo
 Wistia makes it hard to leave. Vimeo makes it hard to arrive. Migrate with ease.
 
-_Tip: Execute via command line to avoid hitting PHP's `max_execution time`._
+_Tip: Execute via command line to avoid hitting PHP's `max_execution_time`._
 
 `php 1-wistia.php`
 - Consumes Wistia data via API into a single JSON file; sleeps between requests to avoid API rate limiting
@@ -17,4 +17,4 @@ _Tip: Execute via command line to avoid hitting PHP's `max_execution time`._
 
 ## Dependencies
 - Download the official PHP library for the Vimeo API: https://github.com/vimeo/vimeo.php
-- Extract to create a `vimeo.php` subfolder alongside the files here (or update the path in `config.php`)
+- Extract to create a `vimeo.php` subfolder alongside the files here (or update the path in `config.inc.php`)
