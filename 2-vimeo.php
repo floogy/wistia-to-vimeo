@@ -1,50 +1,49 @@
 <?php
-// Do not buffer output - ignore these lines
 ob_start();
 ob_implicit_flush(true);
 ob_end_flush();
+
+include('config.inc.php');
+include('functions.inc.php');
+
 echo "<pre>\n\n";
 
-// Setup re. Vimeo > Settings > API access
-$setup = [
-	'client_id' => 'VIMEO_CLIENT_ID',
-	'client_secret' => 'VIMEO_CLIENT_SECRET', 
-	'access_token' => 'VIMEO_ACCESS_TOKEN',
-];
-$privacy = [
-	'view' => 'unlisted', 
-	'embed' => 'whitelist',
-];
-$embed_domains = [
-	'example.com',
-];
-
 // Load SDK
-require dirname(__FILE__) . '/../../core/lib/vimeo.php/autoload.php'; // Include the Vimeo PHP library
+require $config['vimeo']['php_sdk_path']; // Include the Vimeo PHP library
 use Vimeo\Vimeo;
 
 // Initialize the Vimeo client with your access token
-$client = new Vimeo($setup['client_id'], $setup['client_secret'], $setup['access_token']);
+$client = new Vimeo($config['vimeo']['client_id'], $config['vimeo']['client_secret'], $config['vimeo']['access_token']);
 
 // Read the CSV file
-$csvFile = 'vimeo-input.csv'; // Replace with your CSV file path
+$csvFile = '1-wistia-valid.csv'; // Replace with your CSV file path
 $csvData = array_map('str_getcsv', file($csvFile));
 
 // Extract the header row and add two more columns
 $headerRow = $csvData[0];
-$headerRow[] = "Wistia Video ID";
 $headerRow[] = "Vimeo Video ID";
 
 // Remove the header row from the data
 array_shift($csvData);
 
-// Start building output CSV
-$updatedCsvData = [$headerRow];
+// Create CSV files if non-existant
+$csv_file_valid = '2-vimeo-valid.csv';
+$csv_file_invalid = '2-vimeo-invalid.csv';
+foreach ([$csv_file_valid, $csv_file_invalid] as $csv_file) {
+	if (!file_exists($csv_file)) {
+		$csv = fopen($csv_file, 'w');
+		fputcsv($csv, $headerRow); // Write the header row to the CSV file
+		fclose($csv);
+	}
+}
+
 $processedFolders = [];
 $processedVideos = [];
 $start_time_total = microtime(true);
+$count = 0;
 foreach ($csvData as $index => $row) {
 	$start_time = microtime(true);
+	$skip = false;
 	// echo '<pre>'; print_r($row); echo '</pre>';
 
 	$publicURL = $row[0];
@@ -71,66 +70,59 @@ foreach ($csvData as $index => $row) {
 
 	echo ($index + 1).". ".$title." \n";
 
-    // Check if the folder exists, create if it doesn't
-	if (empty($vimeoFolderID)) {
-		if (array_key_exists($wistiaFolderID, $processedFolders)) {
-			$vimeoFolderID = $processedFolders[$wistiaFolderID];
-		} else {
-            // Check if the folder already exists on Vimeo
-			$folders = $client->request('/me/projects', [], 'GET');
-			$existingFolder = null;
-			foreach ($folders['body']['data'] as $folder) {
-				if ($folder['name'] === $folderName) {
-					$existingFolder = $folder;
-					break;
+	$csv_match_found_valid = isDuplicateWistiaVideoID($csv_file_valid, $wistiaVideoID);
+	if (!empty($csv_match_found_valid)) {
+		echo "Skipped - Valid match already found in ".$csv_file_valid."\n";
+	}
+	$csv_match_found_invalid = isDuplicateWistiaVideoID($csv_file_invalid, $wistiaVideoID);
+	if (!empty($csv_match_found_invalid)) {
+		echo "Skipped - Invalid match already found in ".$csv_file_invalid."\n";
+	}
+	if (empty($csv_match_found_valid) && empty($csv_match_found_invalid)) {
+		$count++;
+
+	    // Check if the folder exists, create if it doesn't
+		if (empty($vimeoFolderID)) {
+			if (array_key_exists($wistiaFolderID, $processedFolders)) {
+				$vimeoFolderID = $processedFolders[$wistiaFolderID];
+			} else {
+	            // Check if the folder already exists on Vimeo
+				$folders = $client->request('/me/projects', [], 'GET');
+				$existingFolder = null;
+				foreach ($folders['body']['data'] as $folder) {
+					if ($folder['name'] === $folderName) {
+						$existingFolder = $folder;
+						break;
+					}
+				}
+
+				if ($existingFolder) {
+					$folderParts = explode('/', $existingFolder['uri']);
+					$vimeoFolderID = end( $folderParts );
+					$processedFolders[$wistiaFolderID] = $vimeoFolderID;
+				} else {
+	                // Create a new folder
+					$folderResponse = $client->request('/me/projects', [
+						'name' => $folderName,
+					], 'POST');
+					$folderData = $folderResponse['body'];
+					$folderParts = explode('/', $folderData['uri']);
+					$vimeoFolderID = end( $folderParts );
+					echo "Created folder: $folderName\n";
+					$processedFolders[$wistiaFolderID] = $vimeoFolderID;
 				}
 			}
-
-			if ($existingFolder) {
-				$folderParts = explode('/', $existingFolder['uri']);
-				$vimeoFolderID = end( $folderParts );
-				$processedFolders[$wistiaFolderID] = $vimeoFolderID;
-			} else {
-                // Create a new folder
-				$folderResponse = $client->request('/me/projects', [
-					'name' => $folderName,
-				], 'POST');
-				$folderData = $folderResponse['body'];
-				$folderParts = explode('/', $folderData['uri']);
-				$vimeoFolderID = end( $folderParts );
-				echo "Created folder: $folderName\n";
-				$processedFolders[$wistiaFolderID] = $vimeoFolderID;
-			}
 		}
-	}
 
-    // Check if the video with the same title and description already exists in the current run
-	$existingVideoID = null;
-	foreach ($processedVideos as $video) {
-		if ($video['name'] === $title && $video['description'] === $description) {
-			$existingVideoID = $video['uri'];
-			break;
-		}
-	}
-	if ($existingVideoID) {
-		$vimeoVideoID = $existingVideoID;
-		echo "Video already processed: $vimeoVideoID\n";
-	} else {
-		// Check if the video with the same title and description already exists on Vimeo
-		$videosList = $client->request('/me/videos', [], 'GET');
 		$existingVideoID = null;
 
-		foreach ($videosList['body']['data'] as $video) {
-			if ($video['name'] === $title && $video['description'] === $description) {
-				$existingVideoID = $video['uri'];
-				break;
-			}
-		}
-
-		if ($existingVideoID) {
+		if (!empty($existingVideoID)) {
 			$vimeoVideoID = $existingVideoID;
-			echo "Video already exists on Vimeo: $vimeoVideoID\n";
 		} else {
+			$test_skip_upload = false;
+			if (!empty($test_skip_upload)) {
+				exit("Uploading stopped!\n");
+			}
 			// Upload the video using the pull approach
 			echo "Uploading";
 			$videoResponse = $client->request('/me/videos', [
@@ -140,8 +132,8 @@ foreach ($csvData as $index => $row) {
 				],
 				'name' => $title,
 				'description' => $description,
-				'privacy' => $privacy,
-				'embed_domains' => $embed_domains,
+				'privacy' => $config['vimeo']['privacy'],
+				'embed_domains' => $config['vimeo']['embed_domains'],
 				'embed' => ['buttons' => ['like' => false, 'watchlater' => false]],
 				'content_rating' => 'safe',
 			], 'POST');
@@ -149,72 +141,85 @@ foreach ($csvData as $index => $row) {
 			$videoData = $videoResponse['body'];
 			$videoParts = explode('/', $videoData['uri']);
 			$vimeoVideoID = end( $videoParts );
-			$processedVideos[] = $videoData;
 
 			// Check the video's status and wait until it's fully processed
 			$videoStatus = $videoData['status'];
 			$waits = 0;
 			while ($videoStatus !== 'available') {
 				$waits++;
-				echo ".";
-				// ob_flush();
-	    		// flush(); // Send the output to the browser immediately
+				if (in_array($videoStatus, ['transcode_starting', 'transcoding'])) {
+					echo ".";
+				} elseif (in_array($videoStatus, ['uploading_error'])) {
+					echo $videoStatus.".";
+					echo " (SKIPPED) ";
+					$skip = true;
+					break;
+				} else {
+					echo $videoStatus.".";
+					echo " (UNKNOWN STATUS - SKIPPED) ";
+					$skip = true;
+					break;
+				}
 				// Sleep for a few seconds and then check the status again
 				sleep(10);
 				$videoInfo = $client->request("/me/videos/{$vimeoVideoID}", [], 'GET');
 				$videoStatus = $videoInfo['body']['status'];
 			}
 			// echo "\n";
+
+			// can shift the below below this condition if desirable to execute on existant files:
+
+			$end_time = microtime(true);
+			$execution_time = round($end_time - $start_time);
+			echo " (".$execution_time." sec)\n";
+
+			if (empty($skip)) {
+
+				// Now, move the video to the desired folder
+				if (!empty($vimeoFolderID)) {
+					$client->request("/me/projects/{$vimeoFolderID}/videos/{$vimeoVideoID}", [], 'PUT');
+					echo "Moved to folder: $folderName\n";
+				}
+
+				// Apply Tags
+				if (count($tags)) {
+					// echo "/videos/{$vimeoVideoID}/tags";
+					// echo '<pre>'; print_r($tags); echo '</pre>';
+					$tagResponse = $client->request("/videos/{$vimeoVideoID}/tags", $tags, 'PUT');
+					// echo '<pre>'; print_r($tagResponse); echo '</pre>';
+					echo "Tagged: ";
+					$tag_name_arr = [];
+					foreach ($tags as $tag) {
+						$tag_name_arr[] = $tag['name'];
+						// $tagResponse = $client->request("/me/videos/{$vimeoVideoID}/tags", ['name' => $tag['name']], 'PUT');
+					}
+					echo implode(", ", $tag_name_arr)."\n";
+				}
+
+			} // $skip
 		}
-	}
 
-	$end_time = microtime(true);
-	$execution_time = round($end_time - $start_time);
-	echo " (".$execution_time." sec)\n";
+		// Set Vimeo Folder ID (doesn't exist in the source CSV)
+		$row[5] = $vimeoFolderID;
+		// Add Vimeo Video ID to the output CSV (doesn't exist in the source CSV)
+		$row[] = $vimeoVideoID;
 
-	// Now, move the video to the desired folder
-	if (!empty($vimeoFolderID)) {
-		$client->request("/me/projects/{$vimeoFolderID}/videos/{$vimeoVideoID}", [], 'PUT');
-		echo "Moved to folder: $folderName\n";
-	}
-
-	// Apply Tags
-	if (count($tags)) {
-		// echo "/videos/{$vimeoVideoID}/tags";
-		// echo '<pre>'; print_r($tags); echo '</pre>';
-		$tagResponse = $client->request("/videos/{$vimeoVideoID}/tags", $tags, 'PUT');
-		// echo '<pre>'; print_r($tagResponse); echo '</pre>';
-		echo "Tagged: ";
-		$tag_name_arr = [];
-		foreach ($tags as $tag) {
-			$tag_name_arr[] = $tag['name'];
-			// $tagResponse = $client->request("/me/videos/{$vimeoVideoID}/tags", ['name' => $tag['name']], 'PUT');
+		$csv_file = (empty($skip)? $csv_file_valid: $csv_file_invalid);
+		$csv_match_found = isDuplicateWistiaVideoID($csv_file, $wistiaVideoID);
+		if (empty($csv_match_found)) {
+			$csv = fopen($csv_file, 'a');
+			fputcsv($csv, $row);
+			fclose($csv);
+		} else {
+			echo "Skipped writing - Match found in ".$csv_file." on ".$wistiaVideoID;
 		}
-		echo implode(", ", $tag_name_arr)."\n";
+		echo "\n";
 	}
-
-	// Set Vimeo Folder ID (doesn't exist in the source CSV)
-	$row[5] = $vimeoFolderID;
-	// Add Vimeo Video ID to the output CSV (doesn't exist in the source CSV)
-	$row[] = $vimeoVideoID;
-	$updatedCsvData[] = $row;
-	echo "\n";
 }
-
-// Define the path for the updated CSV file
-$updatedCsvFile = 'vimeo-output.csv';
-
-// Write the updated data to the CSV file using fputcsv
-$csvFileHandle = fopen($updatedCsvFile, 'w');
-// echo '<pre>'; print_r($updatedCsvData); echo '</pre>';
-foreach ($updatedCsvData as $updatedRow) {
-	fputcsv($csvFileHandle, $updatedRow);
-}
-fclose($csvFileHandle);
 
 // Calculate the elapsed time
-echo "New CSV linking Vimeo IDs with Wistia IDs written to $updatedCsvFile\n";
+echo "New CSV linking Vimeo IDs with Wistia IDs written to $csv_file_valid\n";
 $end_time_total = microtime(true);
 $execution_time_total = round($end_time_total - $start_time_total);
-echo "DONE! ".(count($updatedCsvData)-1)." videos uploaded to Vimeo and transcribed in $execution_time_total seconds.";
+echo "DONE! ".$count." videos uploaded to Vimeo and transcribed in $execution_time_total seconds.";
 echo "\n\n</pre>";

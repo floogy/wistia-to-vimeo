@@ -1,8 +1,6 @@
 <?php
-
-// set your Wistia API token and file count
-$api_token = 'WISTIA_API_TOKEN';
-$number_of_files_on_wistia = 8300;
+include('config.inc.php');
+include('functions.inc.php');
 
 /*
 WHAT THIS SCRIPT DOES:
@@ -23,52 +21,64 @@ Note: Each item gets three Tags on Vimeo, as recommended in the article linked a
 $skip_step_1 = true; // true = skip connecting to Wistia API and downloading JSON file; file exists
 $sleep_seconds_between_api_calls = 3; // 5 works, less may
 $start_at_page_no = 1; // edit if you had a partial run
-$valid_file_extensions = ['mp4','mov','wmv','avi','flv']; // NULL for any - lowercase only
-$json_file = 'wistia.json';
-$csv_file = 'vimeo-input.csv';
+$valid_content_types = [
+    'video/dvd',
+    'video/mp2t',
+    'video/mp4',
+    'video/mpeg',
+    'video/quicktime',
+    'video/x-flv',
+    'video/x-m4v',
+    'video/x-matroska',
+    'video/x-ms-wmv',
+]; // NULL for any - lowercase only
+
+$json_file = '1-wistia.json';
+$csv_file_valid = '1-wistia-valid.csv';
+$csv_file_invalid = '1-wistia-invalid.csv';
 
 echo "<pre>";
 if (empty($skip_step_1)) {
     echo PHP_EOL . "Step 1: Connecting to API and downloading 100 items at time to " . $json_file . " (sleeping ".$sleep_seconds_between_api_calls." seconds between calls to avoid rate limit)..." . PHP_EOL . PHP_EOL;
 
-    $page_count = ceil($number_of_files_on_wistia/100); // Wistia returns 100 per page
+    $page_count = ceil($config['wistia']['file_count']/100); // Wistia returns 100 per page
     for ($i=$start_at_page_no; $i <= $page_count; $i++) {
-    	$page = $i;
-    	$url = 'https://api.wistia.com/v1/medias.json?page=' . $page . '&sort_by=created';
-    	$ch = curl_init();
-    	curl_setopt($ch, CURLOPT_URL, $url);
-    	curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-    	curl_setopt($ch, CURLOPT_HTTPHEADER, array(
-    		'Authorization: Bearer ' . $api_token,
-    	));
-    	$response = curl_exec($ch);
-    	if ($response === false) {
-    		echo 'Error: ' . curl_error($ch);
-    		$curl_failed = true;
-    	} else {
+        $page = $i;
+        $url = 'https://api.wistia.com/v1/medias.json?page=' . $page . '&sort_by=created';
+        $ch = curl_init();
+        curl_setopt($ch, CURLOPT_URL, $url);
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_HTTPHEADER, array(
+            'Authorization: Bearer ' . $config['wistia']['api_token'],
+        ));
+        $response = curl_exec($ch);
+        if ($response === false) {
+            echo 'Error: ' . curl_error($ch);
+            $curl_failed = true;
+        } else {
 
-    		// Append to JSON file
-    		$data = json_decode($response, true);
-    		$json = json_encode($data, JSON_PRETTY_PRINT);
-    		file_put_contents($json_file, $json, FILE_APPEND);
+            // Append to JSON file
+            $data = json_decode($response, true);
+            $json = json_encode($data, JSON_PRETTY_PRINT);
+            file_put_contents($json_file, $json, FILE_APPEND);
 
-    		// Fix that we have multiple JSON objects in the file:
-    		$json_invalid = file_get_contents($json_file); // Read invalid JSON file with multiple blobs
-    		$json_valid = preg_replace('/\]\s*\[\s*/', ',', $json_invalid); // Use regular expressions to replace `] [` with `,` ignoring spaces or line breaks.
-    		file_put_contents($json_file, $json_valid); // Write the corrected JSON to the output file.
+            // Fix that we have multiple JSON objects in the file:
+            $json_invalid = file_get_contents($json_file); // Read invalid JSON file with multiple blobs
+            $json_valid = preg_replace('/\]\s*\[\s*/', ',', $json_invalid); // Use regular expressions to replace `] [` with `,` ignoring spaces or line breaks.
+            file_put_contents($json_file, $json_valid); // Write the corrected JSON to the output file.
 
-    		// Just for display purposes
-    		echo PHP_EOL . "curl https://api.wistia.com/v1/medias.json?page=" . $page . "&sort_by=created -H \"Authorization: Bearer " . $api_token . "\" >> " . $json_file . PHP_EOL;
-    		echo PHP_EOL . 'Page ' . $page . ': ' . count($data) . ' medias' . PHP_EOL;
-    	}
+            // Just for display purposes
+            echo PHP_EOL . "curl https://api.wistia.com/v1/medias.json?page=" . $page . "&sort_by=created -H \"Authorization: Bearer " . $config['wistia']['api_token'] . "\" >> " . $json_file . PHP_EOL;
+            echo PHP_EOL . 'Page ' . $page . ': ' . count($data) . ' medias' . PHP_EOL;
+        }
 
-    	curl_close($ch);
+        curl_close($ch);
 
-    	if (!empty($curl_failed)) {
-    		die(PHP_EOL . PHP_EOL . "Sorry, connection not established to API.");
-    	}
+        if (!empty($curl_failed)) {
+            die(PHP_EOL . PHP_EOL . "Sorry, connection not established to API.");
+        }
 
-    	sleep($sleep_seconds_between_api_calls);
+        sleep($sleep_seconds_between_api_calls);
     }
 
 } // $skip_step_1
@@ -79,7 +89,7 @@ if (empty($skip_step_1)) {
 
 echo PHP_EOL . "=============================================" . PHP_EOL;
 
-echo PHP_EOL . "Step 2: Generating `".$csv_file."` spreadsheet formatted like https://vimeoenterprise.helpscoutdocs.com/article/827-migrating-content-to-vimeo" . PHP_EOL;
+echo PHP_EOL . "Step 2: Generating `".$csv_file_valid."` and  `".$csv_file_invalid."` spreadsheet formatted like https://vimeoenterprise.helpscoutdocs.com/article/827-migrating-content-to-vimeo" . PHP_EOL;
 
 
 // Load the JSON data from the file
@@ -88,15 +98,18 @@ $json = file_get_contents($json_file);
 // Decode the JSON data into an array
 $data = json_decode($json, true);
 
-// Create a new CSV file
-$csv = fopen($csv_file, 'w');
-
-// Write the header row to the CSV file
-fputcsv($csv, array('Source URL', 'Title', 'Description', 'Tags', 'Thumbnail URL', 'Vimeo Folder ID', 'Text Track URL', 'Privacy', 'Content Type', 'Folder Name', 'Wistia Folder ID', 'Wistia Video ID'));
+// Create CSV files
+foreach ([$csv_file_valid, $csv_file_invalid] as $csv_file) {
+    if (!file_exists($csv_file)) {
+        $csv = fopen($csv_file, 'w');
+        // Write the header row to the CSV file
+        fputcsv($csv, array('Source URL', 'Title', 'Description', 'Tags', 'Thumbnail URL', 'Vimeo Folder ID', 'Text Track URL', 'Privacy', 'Content Type', 'Folder Name', 'Wistia Folder ID', 'Wistia Video ID'));
+        fclose($csv);
+    }
+}
 
 // Loop through each item in the JSON data
-$processed_folders = [];
-$files_per_extension = [];
+$files_per_content_type = [];
 foreach ($data as $item) {
     // Get the values for each column from the JSON data
     $sourceUrl = $item['assets'][0]['url'];
@@ -203,38 +216,32 @@ foreach ($data as $item) {
     $file_name = trim($file_name);
     $sourceUrl .= '/' . $file_name . '.' . $file_extension;
 
-    // Tally files per extension
-    if (empty($files_per_extension[ $contentType ])) {
-        $files_per_extension[ $contentType ] = 0;
-    }
-    $files_per_extension[ $contentType ]++;
+    // Tally files per contentType
+    // if (empty($files_per_content_type[ $contentType ])) {
+    //  $files_per_content_type[ $contentType ] = 0;
+    // }
+    // $files_per_content_type[ $contentType ]++;
 
-
-    // Write the content row to the CSV file
-    // if (!array_key_exists($wistiaFolderID, $processed_folders)) {
-     if (empty($valid_file_extensions) || in_array(strtolower($file_extension), $valid_file_extensions)) {
+    // Write the content row to the valid or invalid CSV file
+    $csv_file = (empty($valid_content_types) || in_array(strtolower($contentType), $valid_content_types)? $csv_file_valid: $csv_file_invalid);
+    $csv_match_found = isDuplicateWistiaVideoID($csv_file, $wistiaVideoID);
+    if (empty($csv_match_found)) {
+        echo "('".$csv_file."', '".$wistiaVideoID."') = FALSE\n";
+        $csv = fopen($csv_file, 'a');
         fputcsv($csv, array($sourceUrl, $title, $description, $tags, $thumbnailUrl, '', $textTrackUrl, $privacy, $contentType, $folderName, $wistiaFolderID, $wistiaVideoID));
-        // fputcsv($csv, array($folderName, $wistiaFolderID));
-        $processed_folders[ $wistiaFolderID ] = $folderName;
+        fclose($csv);
+    } else {
+        echo "('".$csv_file."', '".$wistiaVideoID."') = TRUE\n";
     }
+    // if ($title == 'Balance-of-Powers-in-World-History') {
+    //  exit('here');
+    // }
 }
-// echo '<pre>'; print_r($files_per_extension); echo '</pre>';
+// echo '<pre>'; print_r($files_per_content_type); echo '</pre>';
 
 // Close the CSV file
-fclose($csv);
+
 
 echo PHP_EOL . "DONE" . PHP_EOL;
-
-# strip all non-alphanumeric chars
-function strtoalphanumeric ($var, $char="-", $strip_non_spaces=false) {
-    if ($strip_non_spaces) {
-        $var = str_replace(" ", '-', $var);
-        $var = preg_replace("/[^0-9a-zA-Z-]/", '', $var);
-    } else {
-        $var = preg_replace("/[^0-9a-zA-Z-]/", $char, $var);
-    }
-    $var = trim($var);
-    return $var;
-}
 
 echo '</pre>';
